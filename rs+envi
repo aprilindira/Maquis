@@ -1,0 +1,630 @@
+
+//bands selected for training
+var S2_bands = ['B2','B3','B4','B5','B6','B8','B11','B12'];
+
+//function for masking clouds 
+var Mask = table.map(function(f){return f.bounds()});
+var maskClouds = function(img) {
+  var qa = img.select('QA60');
+  var mask = qa.bitwiseAnd(0x400).eq(0).and( // no clouds
+             qa.bitwiseAnd(0x800).eq(0)); // no cirrus
+  return img.updateMask(mask).resample();
+};
+
+var S2_imgcoll = S2L2A.filterBounds(Mask)
+      .filterDate('2018-01-01', '2018-12-31')
+      .map(maskClouds)
+      .map(function(img){
+      return ee.Image(img.select(S2_bands));
+});
+
+
+//begin feature vectors calculations
+var VIs_fc = S2_imgcoll.map(function(img){
+    var ndvi = img.expression
+            ('(B8 - B4) / (B8 + B4)',{
+            'B8': img.select('B8'),
+            'B4': img.select('B4'),
+            }).rename('ndvi');
+    var evi = img.expression(
+            '2.5*(B8 - B4) / (B8 + 2.4*B4 + 1)',{
+            'B8': img.select('B8'),
+            'B4': img.select('B4'),
+            }).rename('evi');
+    var savi = img.expression(
+            '(B8 - B4)*1.5/(B8 + B4 + 0.5)',{
+            'B8': img.select('B8'),
+            'B4': img.select('B4'),
+            }).rename('savi');
+    var ndwi = img.expression
+            ('(B8 - B11) / (B8 + B11)',{
+            'B8': img.select('B8'),'B11': img.select('B11'),
+            }).rename('ndwi');
+    var gdvi = img.expression
+            ('((B8*B8)-(B4*B4))/((B8*B8)+(B4*B4))',{
+            'B8': img.select('B8'),
+            'B4': img.select('B4'),
+            }).rename('gdvi');
+    var gvi = img.expression(
+            '(-0.283*B2)+(-0.2453*B3)+(-0.5436*B4)+(0.724*B11)+(-0.18*B12)',{
+            'B2': img.select('B2'),
+            'B3': img.select('B3'),
+            'B4': img.select('B4'),
+            'B11': img.select('B11'),
+            'B12': img.select('B12'),
+            }).rename('gvi');
+    return img.addBands([ndvi, evi, savi, ndwi, gdvi, gvi]);
+});
+
+var features_fc = S2_imgcoll.map(function(img){
+    var feature1 = img.expression
+            ('(B3 - B4) / (B3 + B4)',{
+            'B3': img.select('B3'),
+            'B4': img.select('B4'),
+            }).rename('feature1');
+    var feature2 = img.expression
+            ('(B11 - B8) / (B11 + B8)',{
+            'B11': img.select('B11'),
+            'B8': img.select('B8'),
+            }).rename('feature2');
+    var feature3 = img.expression
+            ('(B11 - B12) / (B11 + B12)',{
+            'B11': img.select('B11'),
+            'B12': img.select('B12'),
+            }).rename('feature3');
+    var feature4 = img.expression
+            ('(B3 - B2) / (B3 + B2)',{
+            'B3': img.select('B3'),
+            'B2': img.select('B2'),
+            }).rename('feature4');           
+    return img.addBands([feature1,feature2,feature3,feature4]);
+});
+
+
+
+//filter for year 2018
+var y2018Filter = ee.Filter.date('2018-01-01', '2018-12-31');
+var y2018JanuaryFilter = ee.Filter.date('2018-01-01', '2018-01-31');
+var y2018FebruaryFilter = ee.Filter.date('2018-02-01', '2018-02-28');
+var y2018MarchFilter = ee.Filter.date('2018-02-20', '2018-04-10');
+var y2018AprilFilter = ee.Filter.date('2018-04-01', '2018-04-30');
+var y2018MayFilter = ee.Filter.date('2018-05-01', '2018-05-31');
+var y2018JuneFilter = ee.Filter.date('2018-06-01', '2018-06-30');
+var y2018JulyFilter = ee.Filter.date('2018-07-01', '2018-07-31');
+var y2018AugustFilter = ee.Filter.date('2018-08-01', '2018-08-31');
+var y2018SeptemberFilter = ee.Filter.date('2018-09-01', '2018-09-30');
+var y2018OctoberFilter = ee.Filter.date('2018-10-01', '2018-10-31');
+var y2018NovemberFilter = ee.Filter.date('2018-11-01', '2018-11-30');
+var y2018DecemberFilter = ee.Filter.date('2018-12-01', '2018-12-31');
+
+var y2018 = VIs_fc.filter(y2018Filter);
+var y2018January = VIs_fc.filter(y2018JanuaryFilter);
+var y2018February = VIs_fc.filter(y2018FebruaryFilter);
+var y2018March = VIs_fc.filter(y2018MarchFilter);
+var y2018April = VIs_fc.filter(y2018AprilFilter);
+var y2018May = VIs_fc.filter(y2018MayFilter);
+var y2018June = VIs_fc.filter(y2018JuneFilter);
+var y2018July = VIs_fc.filter(y2018JulyFilter);
+var y2018August = VIs_fc.filter(y2018AugustFilter);
+var y2018September = VIs_fc.filter(y2018SeptemberFilter);
+var y2018October = VIs_fc.filter(y2018OctoberFilter);
+var y2018November = VIs_fc.filter(y2018NovemberFilter);
+var y2018December = VIs_fc.filter(y2018DecemberFilter);
+
+var featureAugust = features_fc.filter(y2018AugustFilter);
+var featureMarch = features_fc.filter(y2018MarchFilter);
+var featureMay = features_fc.filter(y2018MayFilter);
+var featureJuly = features_fc.filter(y2018JulyFilter);
+
+var AugustB3B4 = featureAugust.mean().select('feature1').rename('AugB3B4');
+var AugustB11B8 = featureAugust.mean().select('feature2').rename('AugB11B8');
+var JulyB11B8 = featureJuly.mean().select('feature2').rename('JulyB11B8');
+var MarchB11B8 = featureMarch.mean().select('feature2').rename('MarchB11B8');
+var MayB11B8 = featureMay.mean().select('feature2').rename('MayB11B8');
+var JulyB11B12 = featureJuly.mean().select('feature3').rename('JulyB11B12');
+var MayB3B2 = featureMay.mean().select('feature4').rename('MayB3B2');
+
+//Vegetation Indices
+//var VI_January = y2018January.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Januaryndvi','y2018Januaryevi','y2018Januarysavi','y2018Januaryndwi','y2018Januarygdvi','y2018Januarygvi');
+//var VI_February = y2018February.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Feburaryndvi','y2018Februaryevi','y2018Februarysavi','y2018Februaryndwi','y2018Februarygdvi','y2018Februarygvi');
+//var VI_February = y2018February.mean().select('ndvi','ndwi').rename('y2018Feburaryndvi','y2018Februaryndwi');
+//var VI_March = y2018March.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Marchndvi','y2018Marchevi','y2018Marchsavi','y2018Marchndwi','y2018Marchgdvi','y2018Marchgvi');
+//var VI_March = y2018March.mean().select('gvi').rename('y2018Marchgvi');
+//var VI_April = y2018April.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Aprilndvi','y2018Aprilevi','y2018Aprilsavi','y2018Aprilndwi','y2018Aprilgdvi','y2018Aprilgvi');
+var VI_May = y2018May.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Mayndvi','y2018Mayevi','y2018Maysavi','y2018Mayndwi','y2018Maygdvi','y2018Maygvi');
+//var VI_May = y2018May.mean().select('gvi').rename('y2018Maygvi');
+//var VI_June = y2018June.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Junendvi','y2018Juneevi','y2018Junesavi','y2018Junendwi','y2018Junegdvi','y2018Junegvi');
+//var VI_June = y2018June.mean().select('ndwi','gvi').rename('y2018Junendwi','y2018Junegvi');
+//var VI_July = y2018July.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Julyndvi','y2018Julyevi','y2018Julysavi','y2018Julyndwi','y2018Julygdvi','y2018Julygvi');
+//var VI_August = y2018August.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Augustndvi','y2018Augustevi','y2018Augustsavi','y2018Augustndwi','y2018Augustgdvi','y2018Augustgvi');
+//var VI_August = y2018August.mean().select('gvi').rename('y2018Augustgvi');
+//var VI_September = y2018September.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Septemberndvi','y2018Septemberevi','y2018Septembersavi','y2018Septemberndwi','y2018Septembergdvi','y2018Septembergvi');
+//var VI_October = y2018October.mean().select('ndwi').rename('y2018Octoberndwi');
+//var VI_November = y2018November.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Novemberndvi','y2018Novemberevi','y2018Novembersavi','y2018Novemberndwi','y2018Novembergdvi','y2018Novembergvi');
+//var VI_November = y2018November.mean().select('gvi','ndwi').rename('y2018Novemberndwi','y2018Novembergvi');
+//var VI_December = y2018December.mean().select('ndvi','evi','savi','ndwi','gdvi','gvi').rename('y2018Decemberndvi','y2018Decemberevi','y2018Decembersavi','y2018Decemberndwi','y2018Decembergdvi','y2018Decembergvi');
+
+//var raw_February = y2018February.mean().select('B12').rename('y2018Februaryband12');
+
+
+//the ground-truth
+var gt_fc = ee.FeatureCollection(groundtruth);
+//var gt_fc_short = gt_fc.limit(800);
+//print("Limited: ground truth..", gt_fc_short);
+
+//area of interest
+var roi = ee.FeatureCollection(table);
+Map.setCenter(31, 37, 7);
+
+//non-RS parameters
+var DEMROI = DEM.clip(roi);
+
+var xyGrad = DEMROI.gradient();
+//compute gradient eastness
+var gradient_x_eastness = xyGrad.select('x');
+//compute gradient northness
+var gradient_y_northness = xyGrad.select('y');
+
+var slopeROI = ee.Terrain.slope(DEMROI);
+var BIOdatasetROI = BIOdataset.clip(roi);
+//delete bio03 and bio14 because of low importance. Bio07 is also eliminated.
+//var impBio = BIOdatasetROI.select('bio02','bio04','bio05','bio12','bio13','bio17','bio19');
+var impBio = BIOdatasetROI.select('bio01','bio02','bio03','bio04','bio05','bio06','bio08','bio09','bio12','bio13','bio15','bio17','bio19');
+//var soilROI = soildata.clip(roi);
+var streamsROI = streams.clip(roi);
+var ridgesROI = ridges.clip(roi);
+var surfaceCurv = surfacecurvature.clip(roi);
+//print(streamsROI);
+//print(ridgesROI);
+//print(surfaceCurv);
+//var descChangeROI = descChange.clip(roi);
+//var ascChangeROI = ascChange.clip(roi);
+
+//concatenate all mean images
+//var allPredictors = ee.Image.cat([surfaceCurv.float()],[streamsROI.float()],[ridgesROI.float()],[gradient_x_eastness.float()],[gradient_y_northness.float()],[DEMROI.float()], [slopeROI.float()], [impBio.float()],[MayB3B2.float()],[JulyB11B12.float()],[MayB11B8.float()],[MarchB11B8.float()],[JulyB11B8.float()],[AugustB11B8.float()],[AugustB3B4.float()],[VI_February.float()],[VI_March.float()],[VI_April.float()],[VI_May.float()],[VI_June.float()],[VI_July.float()],[VI_August.float()],[VI_September.float()],[VI_October.float()],[VI_November.float()]);
+//var allPredictors = ee.Image.cat([DEMROI.float()], [slopeROI.float()], [impBio.float()],[MayB3B2.float()],[JulyB11B12.float()],[MayB11B8.float()],[MarchB11B8.float()],[JulyB11B8.float()],[AugustB11B8.float()],[AugustB3B4.float()],[VI_March.float()],[VI_May.float()],[VI_October.float()],[VI_November.float()]);
+var allPredictors = ee.Image.cat([DEMROI.float()], [slopeROI.float()], [impBio.float()],[VI_May.float()]);
+var pbands = allPredictors.bandNames();
+//print(allPredictors);
+
+//select just class column
+var sel_samples = gt_fc.select(['Maki_kod_2']);
+
+//turn median images into ImageCollection
+var predictors_imgcoll = ee.ImageCollection(allPredictors);
+//print("All features as an Image Collection..", predictors_imgcoll);
+
+//compute median areal values by mapping over polygons and then over images
+var predictors_fc = sel_samples.map(function(f) {
+    return predictors_imgcoll.map(function(i) {
+      var mean = i.reduceRegion({
+        geometry: f.geometry(),
+        reducer: ee.Reducer.mean(),
+        scale: 10,
+      });
+          return f.setMulti(mean);
+    });
+});
+//print("Limited: Feature Collections of all features..", predictors_fc.limit(5));
+
+//flatten
+var predictors_fc_flattened = predictors_fc.flatten();
+//print("Limited: A Feature Collection consisting all features..", predictors_fc_flattened.limit(50));
+
+// Filter out the null property values
+var trainingNoNulls = predictors_fc_flattened.filter(
+  ee.Filter.notNull(predictors_fc_flattened.first().propertyNames())
+);
+print("Limited: Training data without Nulls..",trainingNoNulls.limit(15));
+
+
+
+Export.table.toDrive({
+ collection: trainingNoNulls,
+ description: 'trainingsinglemonth',
+ fileFormat: 'CSV'
+});
+
+
+var classifier = ee.Classifier.randomForest(150).train({
+   features: trainingNoNulls,
+   classProperty: 'Maki_kod_2',
+   inputProperties: pbands
+ });
+ 
+var classified = allPredictors.select(pbands).classify(classifier);
+
+
+//  Palette with the colors
+var palette =[
+  'FF6600', //0: Sarcopeterium or prickly, spiny, or thorny burnet
+  'E8ACAC', //1: Genista or broom
+  'FB8700', //2: Püren or heather
+  '247511', //3: Kermes, Pırnal, Boz Pırnal or kermes oak, holm oak, gray oak
+  'F10D0D', //4: Sandal or sandalwood
+  'CCCC00', //5: Zeytin or olives
+  '93f193', //6: Akdeniz defnesi or Mediterranean bay leaf
+  '969696', //7: Karışık or mixed
+  'FBC9E2', //8: Erguvan or judas-tree DELETED
+  '00FF00', //9: Tesbih or string-of-beads (Styrax)
+  '003300', //10: Harnup or carob
+  'F6007B', //11: Zakkum or nerium/oleander
+  'FF0000', //12: Menengiç or turpentine tree/terebinth
+  '33CC33', //13: Antep Fıstığı or pistachio
+  'CC00FF', //14: Hayıt or chaste-tree DELETED
+  'A80054', //15: Andız - Kermes or Syrian juniper - kermes oak
+  'FF4382', //16: Katran Ardıcı - Kermes or prickly juniper - kermes oak
+  'A96FB5', //17: Boylu Ardıç, Katran Ardıcı & Andız Ardıcı mixed with andiz-kermes & katran ardici-kermes
+  'E73939', //18: Kokar Ardıç or stinky juniper DELETED
+  'AE1616', //19: Katran Ardıcı or prickly juniper
+  'EE6EBA', //20: Andız Ardıcı or Syrian juniper
+  'E61A8D', //21: Yaygın Ardıç or common juniper DELETED
+  '12CDF2', //22: Maki - Yaprak Döken Meşe or Maki - deciduous oak 
+  '4265ED', //23: Yaprak Döken Meşe or deciduous oak
+  'E61A8D', //24: Pinus brutia
+];
+
+
+
+var visParams2 = {
+  bands: ['classification'],
+  min: 0,
+  max: 24,
+  palette: palette,
+};
+
+//export classified map
+var classified_img = classified.clip(roi);
+var map_classified = classified_img.visualize(visParams2);
+//Map.addLayer(map_classified, {},'Classified Map Trial');
+
+Export.image.toDrive({
+image: map_classified,
+region: roi,
+description: 'combinedmap',
+scale: 30,
+maxPixels: 348086150,
+});
+
+
+// Area Calculation by Class
+
+// We take the ee.Image.pixelArea() image and add the classified image as a new band
+// This band will be used by the grouped reduced to categorize the results
+
+var areaImage = ee.Image.pixelArea().addBands(classified)
+
+var areas = areaImage.reduceRegion({
+      reducer: ee.Reducer.sum().group({
+      groupField: 1,
+      groupName: 'class',
+    }),
+    geometry: mask.geometry(),
+    scale: 30,
+    maxPixels: 1e10
+    }); 
+//print(areas);
+
+// The result of reduceRegion() with a grouped reducer is a dictionary of dictionaries for each class
+// The top level dictionary has a single key named 'groups'
+// We can extract the individual dictionaries and merge them into a single one
+var classAreas = ee.List(areas.get('groups'))
+
+//Apply a function using .map() function to iterate over each class item
+//We extract the class and area numbers and return a list for each class
+//The result is a list of lists
+
+// Important to note that dictionary key must be of type 'string'
+// Our keys are class numbers, so we call .format() to convert the number to string
+var classAreaLists = classAreas.map(function(item) {
+  var areaDict = ee.Dictionary(item)
+  var classNumber = ee.Number(areaDict.get('class')).format()
+  var area = ee.Number(areaDict.get('sum')).divide(1e6).round()
+  return ee.List([classNumber, area])
+})
+//print(classAreaLists);
+
+// We can now create a dictionary using ee.Dictionary which accepts a list of key/value pairs
+var result = ee.Dictionary(classAreaLists.flatten())
+//print(result);
+ 
+// Make a feature without geometry and set the properties to the dictionary of result.
+var areaFeature = ee.Feature(null, result);
+
+// Wrap the Feature in a FeatureCollection for export.
+var areaFC = ee.FeatureCollection([areaFeature]);
+
+Export.table.toDrive({
+    collection: areaFC,
+    description: 'classAreas',
+    folder: 'earthengine',
+    fileNamePrefix: 'classAreas',
+    fileFormat: 'CSV',
+});
+
+
+// Get a confusion matrix representing resubstitution accuracy
+//var trainAccuracy = classifier.confusionMatrix();
+//print('Resubstitution error matrix: ', trainAccuracy);
+//print('Training overall accuracy: ', trainAccuracy.accuracy());
+
+/*
+
+//Random Forest Classification
+var withRandom = trainingNoNulls.randomColumn('random');
+
+// We want to reserve some of the data for testing, to avoid overfitting the model.
+var split = 0.7;  // Roughly 70% training, 30% testing.
+var trainingPartition = withRandom.filter(ee.Filter.lt('random', split));
+var testingPartition = withRandom.filter(ee.Filter.gte('random', split));
+
+// Generic Function to remove a property from a feature
+var removeProperty = function(feat, property) {
+  var properties = feat.propertyNames()
+  var selectProperties = properties.filter(ee.Filter.neq('item', property))
+  return feat.select(selectProperties)
+}
+
+// remove property random in each feature
+var trainingPartition = trainingPartition.map(function(feat) {
+  return removeProperty(feat, 'random')
+})
+var testingPartition = testingPartition.map(function(feat) {
+  return removeProperty(feat, 'random')
+})
+
+// Trained with 70% of our data.
+ var trainedClassifier = ee.Classifier.smileRandomForest(150).train({
+   features: trainingPartition,
+   classProperty: 'Maki_kod_2',
+   inputProperties: pbands
+ });
+ 
+ 
+// Print some info about the classifier.
+//print('RF, explained', classifier.explain());
+Export.table.toDrive({
+  collection: ee.FeatureCollection([
+    ee.Feature(null, trainedClassifier.explain())
+  ]),
+  description: 'trainedClassifier',
+  fileFormat: 'CSV'
+});
+
+
+// Classify the test FeatureCollection.
+var test = testingPartition.classify(trainedClassifier);
+
+// Print the confusion matrix.
+var errorMatrix = test.errorMatrix('Maki_kod_2', 'classification');
+//print('RF testing error matrix', errorMatrix);
+//print('RF testing accuraccy', errorMatrix.accuracy());
+
+
+var exportAccuracy = ee.Feature(null, {matrix: errorMatrix.array()})
+var exportoverallAccuracy = ee.Feature(null, {matrix: errorMatrix.accuracy()});
+var exportCA = ee.Feature(null, {matrix: errorMatrix.consumersAccuracy()});
+var exportKappa = ee.Feature(null, {matrix: errorMatrix.kappa()});
+var exportOrder = ee.Feature(null, {matrix: errorMatrix.order()});
+var exportPA = ee.Feature(null, {matrix: errorMatrix.producersAccuracy()});
+
+
+// Export the FeatureCollection.
+Export.table.toDrive({
+  collection: ee.FeatureCollection(exportAccuracy),
+  description: 'errorMatrixRSnonRS',
+  fileFormat: 'CSV'
+});
+Export.table.toDrive({
+ collection: ee.FeatureCollection(exportoverallAccuracy),
+ description: 'overallAccuracyRSnonRS',
+ fileFormat: 'CSV'
+});
+Export.table.toDrive({
+ collection: ee.FeatureCollection(exportCA),
+ description: 'consumersAccuracyRSnonRS',
+ fileFormat: 'CSV'
+});
+Export.table.toDrive({
+ collection: ee.FeatureCollection(exportKappa),
+ description: 'KappaRSnonRS',
+ fileFormat: 'CSV'
+});
+Export.table.toDrive({
+ collection: ee.FeatureCollection(exportPA),
+ description: 'producersAccuracy',
+ fileFormat: 'CSV'
+});
+*/
+
+/*
+// parameter Importance Chart
+var dict = trainedClassifier.explain();
+//print('Explain:',dict);
+ 
+var variable_importance = ee.Feature(null, ee.Dictionary(dict).get('importance'));
+ 
+var chart =
+ui.Chart.feature.byProperty(variable_importance)
+.setChartType('ColumnChart')
+.setOptions({
+title: 'Random Forest Variable Importance',
+legend: {position: 'none'},
+hAxis: {title: 'Bands'},
+vAxis: {title: 'Importance'}
+});
+//print(chart);
+
+/*
+var palette =[
+  'FF6600', //0: Sarcopeterium or prickly, spiny, or thorny burnet DELETED
+  'FCFC24', //1: Genista or broom
+  'A96FB5', //2: Püren or heather
+  '247511', //3: Kermes, Pırnal, Boz Pırnal or kermes oak, holm oak, gray oak
+  '65E57D', //4: Sandal or sandalwood
+  'CCCC00', //5: Zeytin or olives
+  '008000', //6: Akdeniz defnesi or Mediterranean bay leaf
+  '969696', //7: Karışık or mixed
+  'FBC9E2', //8: Erguvan or judas-tree DELETED
+  '00FF00', //9: Tesbih or string-of-beads (Styrax)
+  '003300', //10: Harnup or carob
+  'F6007B', //11: Zakkum or nerium/oleander DELETED
+  'FF0000', //12: Menengiç or turpentine tree/terebinth
+  '33CC33', //13: Antep Fıstığı or pistachio
+  'CC00FF', //14: Hayıt or chaste-tree DELETED
+  'A80054', //15: Andız - Kermes or Syrian juniper - kermes oak (15 AND 16 COMBINED. NEW NAME = 15)
+  'FF4382', //16: Katran Ardıcı - Kermes or prickly juniper - kermes oak (15 AND 16 COMBINED. NEW NAME = 15)
+  'EE7676', //17: Boylu Ardıç or tall juniper
+  'E73939', //18: Kokar Ardıç or stinky juniper DELETED
+  'AE1616', //19: Katran Ardıcı or prickly juniper (19 AND 20 COMBINED. NEW NAME = 19)
+  'EE6EBA', //20: Andız Ardıcı or Syrian juniper (19 AND 20 COMBINED. NEW NAME = 19)
+  'E61A8D', //21: Yaygın Ardıç or common juniper DELETED
+  '253F26', //22: Maki - Yaprak Döken Meşe or Maki - deciduous oak 
+  '253F26', //23: Yaprak Döken Meşe or deciduous oak
+  'E61A8D', //24: RED PINES (NEW CLASS) OR PINUS BRUTIA OR KIZIL CAM
+];
+
+var visParams2 = {
+  bands: ['classification'],
+  min: 0,
+  max: 24,
+  palette: palette,
+};
+
+//export classified map
+var classified_img = classified.clip(roi);
+var map_classified = classified_img.visualize(visParams2);
+
+//Map.addLayer(extakdenizkml, {color:'green'},'ROI');
+//Map.addLayer(map_classified, {},'Classified Map Trial');
+//Map.addLayer(groundtruth, {color:'pink'},'Groundtruth');
+//Map.addLayer(DEMROI,{min: 0, max: 3000},'DEM');
+//Map.addLayer(soilROI,visualization,'SOIL DATA');
+
+Export.image.toDrive({
+image: map_classified,
+region: roi,
+description: 'experiment',
+scale: 60,
+maxPixels: 348086150,
+});
+
+
+
+// legend
+// set position of panel
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px'
+  }
+});
+
+// create legend title
+var legendTitle = ui.Label({
+  value: 'Non Remote Sensing Parameters',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+    }
+});
+
+// add the title to the panel
+legend.add(legendTitle);
+    
+// creates and styles 1 row of the legend
+var makeRow = function(color, name) {
+      
+      // Create the label that is actually the colored box.
+      var colorBox = ui.Label({
+        style: {
+          backgroundColor: '#' + color,
+          // Use padding to give the box height and width.
+          padding: '8px',
+          margin: '0 0 4px 0'
+        }
+      });
+      
+      // Create the label filled with the description text.
+      var description = ui.Label({
+        value: name,
+        style: {margin: '0 0 4px 6px'}
+      });
+      
+      // return the panel
+      return ui.Panel({
+        widgets: [colorBox, description],
+        layout: ui.Panel.Layout.Flow('horizontal')
+      });
+};
+
+
+//  Palette with the colors
+var palette =[
+  'FF6600', //0: Sarcopeterium or prickly, spiny, or thorny burnet DELETED
+  'FCFC24', //1: Genista or broom
+  'A96FB5', //2: Püren or heather
+  '247511', //3: Kermes, Pırnal, Boz Pırnal or kermes oak, holm oak, gray oak
+  '65E57D', //4: Sandal or sandalwood
+  'CCCC00', //5: Zeytin or olives
+  '008000', //6: Akdeniz defnesi or Mediterranean bay leaf
+  '969696', //7: Karışık or mixed
+  'FBC9E2', //8: Erguvan or judas-tree DELETED
+  '00FF00', //9: Tesbih or string-of-beads (Styrax)
+  '003300', //10: Harnup or carob
+  'F6007B', //11: Zakkum or nerium/oleander DELETED
+  'FF0000', //12: Menengiç or turpentine tree/terebinth
+  '33CC33', //13: Antep Fıstığı or pistachio
+  'CC00FF', //14: Hayıt or chaste-tree DELETED
+  'A80054', //15: Andız - Kermes or Syrian juniper - kermes oak (15 AND 16 COMBINED. NEW NAME = 15)
+  'FF4382', //16: Katran Ardıcı - Kermes or prickly juniper - kermes oak (15 AND 16 COMBINED. NEW NAME = 15)
+  'EE7676', //17: Boylu Ardıç or tall juniper
+  'E73939', //18: Kokar Ardıç or stinky juniper DELETED
+  'AE1616', //19: Katran Ardıcı or prickly juniper (19 AND 20 COMBINED. NEW NAME = 19)
+  'EE6EBA', //20: Andız Ardıcı or Syrian juniper (19 AND 20 COMBINED. NEW NAME = 19)
+  'E61A8D', //21: Yaygın Ardıç or common juniper DELETED
+  '253F26', //22: Maki - Yaprak Döken Meşe or Maki - deciduous oak 
+  '253F26', //23: Yaprak Döken Meşe or deciduous oak
+  'E61A8D', //24: RED PINES (NEW CLASS) OR PINUS BRUTIA OR KIZIL CAM
+];
+
+// name of the legend
+var names = [
+  'Sarcopeterium',
+  'Genista',
+  'Püren',
+  'Kermes, Pırnal, Boz Pırnal',
+  'Sandal',
+  'Zeytin',
+  'Akdeniz defnesi',
+  'Karışık',
+  'Erguvan',
+  'Tesbih',
+  'Harnup',
+  'Zakkum',
+  'Menengiç',
+  'Antep Fıstığı',
+  'Hayıt',
+  'Andız - Kermes',
+  'Katran Ardıcı',
+  'Boylu Ardıç',
+  'Kokar Ardıç',
+  'Katran Ardıcı',
+  'Andız Ardıcı',
+  'Yaygın Ardıç',
+  'Maki - Yaprak Döken Meşe or Maki',
+  'Yaprak Döken Meşe',
+  'Pinus Brutia'
+];
+
+// Add color and and names
+for (var i = 0; i < 24; i++) {
+  legend.add(makeRow(palette[i], names[i]));
+  }  
+
+// add legend to map (alternatively you can also print the legend to the console)  
+Map.add(legend);  
+  
+*/
